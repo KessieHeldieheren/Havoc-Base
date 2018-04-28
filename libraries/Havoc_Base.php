@@ -51,7 +51,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  *
  * @author Kessie Heldieheren <me@kessie.gold>
  * @package Havoc
- * @version 2
+ * @version 2.1
  */
 class Havoc_Base
 {
@@ -226,12 +226,12 @@ class Havoc_Base
 	 */
 	public function convertAb(string $number, bool $convert_to_base_numerals = true, bool $return_array = true, bool $format_numeric = false)
 	{
-
 		$hostDelimiter = $this->getBaseAFractionalDelimiter();
 		$targetDelimiter = $this->getBaseBFractionalDelimiter();
+		$hostOrdersSeperator = $this->getBaseAOrdersSeperator();
 		$hostBase = $this->getBaseARadix();
 		$targetBase = $this->getBaseBRadix();
-		$validNumerals = array_merge($this->getBaseANumerals(), [$hostDelimiter]);
+		$validNumerals = array_merge($this->getBaseANumerals(), [$hostDelimiter, $hostOrdersSeperator]);
 		$numberAsArray = str_split($number);
 
 		try {
@@ -252,7 +252,7 @@ class Havoc_Base
 		}
 
 		$components = $this->splitNumberIntoComponents($number, $hostDelimiter);
-		$number = $components[0];
+		$number = str_replace($hostOrdersSeperator, "", $components[0]);
 
 		if (isset($components[1])) {
 			$fraction = str_split($components[1]);
@@ -332,9 +332,10 @@ class Havoc_Base
 	{
 		$hostDelimiter = $this->getBaseBFractionalDelimiter();
 		$targetDelimiter = $this->getBaseAFractionalDelimiter();
+		$hostOrdersSeperator = $this->getBaseBOrdersSeperator();
 		$hostBase = $this->getBaseBRadix();
 		$targetBase = $this->getBaseARadix();
-		$validNumerals = array_merge($this->getBaseBNumerals(), [$hostDelimiter]);
+		$validNumerals = array_merge($this->getBaseBNumerals(), [$hostDelimiter, $hostOrdersSeperator]);
 		$numberAsArray = str_split($number);
 
 		try {
@@ -355,7 +356,7 @@ class Havoc_Base
 		}
 
 		$components = $this->splitNumberIntoComponents($number, $hostDelimiter);
-		$number = $components[0];
+		$number = str_replace($hostOrdersSeperator, "", $components[0]);
 
 		if (isset($components[1])) {
 			$fraction = str_split($components[1]);
@@ -472,7 +473,14 @@ class Havoc_Base
 			$pointer = $truncated * $base;
 
 			if ($i === $resolution) {
-				array_push($result, round($pointer, 0, PHP_ROUND_HALF_UP));
+				$resolved = round($pointer, 0, PHP_ROUND_HALF_UP);
+
+				# TODO This should be looked at. Error of calculation? Some numbers, such as 0.33 round up to base.
+				if ($resolved >= $base) {
+					$resolved = $resolved - 1;
+				}
+
+				array_push($result, $resolved);
 				continue;
 			}
 
