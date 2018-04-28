@@ -285,7 +285,7 @@ class Havoc_Base
 
 			array_push($result_digits, $targetDelimiter);
 
-			return ($result_digits + $result_fraction);
+			return (array_merge($result_digits, $result_fraction));
 		}
 
 		return $result_digits;
@@ -388,7 +388,7 @@ class Havoc_Base
 
 			array_push($result_digits, $targetDelimiter);
 
-			return ($result_digits + $result_fraction);
+			return (array_merge($result_digits, $result_fraction));
 		}
 
 		return $result_digits;
