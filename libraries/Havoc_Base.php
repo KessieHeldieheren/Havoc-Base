@@ -48,27 +48,37 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  *
  * - format_numeric: true returns a numerically formatted string, including 'thousands' separators.
  *
+ * @TODO Format a number input given by a user. Convenience method.
  *
  * @author Kessie Heldieheren <me@kessie.gold>
  * @package Havoc
- * @version 2.1
+ * @version 2.3
  */
 class Havoc_Base
 {
 	/* Titles */
 	const EF_CANNOT_INSTANTIATE_CLASS = "Cannot instantiate HavocBase because %s.";
 	const EF_CANNOT_CONVERT_FROM_BASE = "Cannot convert anything from a base because %s.";
-	const EF_CANNOT_SET_BASE_A_NUMERALS = "Cannot set Base A's numerals list because %s.";
-	const EF_CANNOT_SET_BASE_B_NUMERALS = "Cannot set Base B's numerals list because %s.";
-	const EF_CANNOT_CONVERT_AB = "Cannot begin a conversion from base A to base B because %s.";
-	const EF_CANNOT_CONVERT_BA = "Cannot begin a conversion from base B to base A because %s.";
+	const EF_CANNOT_SET_BASE_A_NUMERALS = "Cannot set %s's numerals list because %s.";
+	const EF_CANNOT_SET_BASE_B_NUMERALS = "Cannot set %s's numerals list because %s.";
+	const EF_CANNOT_CONVERT_AB = "Cannot begin a conversion from %s to %s because %s.";
+	const EF_CANNOT_CONVERT_BA = "Cannot begin a conversion from %s to %s because %s.";
+	const EF_CANNOT_INTDIV = "Cannot perform division on the input because %s.";
 
 	/* Messages */
 	const E_BASE_A_NUMERALS_EMPTY = "the first parameter is empty or not an array";
 	const E_DIGITS_ARRAY_EMPTY = "the array of digits is empty";
 	const E_NUMERALS_LIST_NOT_UNIQUE = "the numerals list contains duplicate symbols";
 	const E_NO_NUMBER = "no number was provided";
-	const E_NUMERALS_INVALID = "number provided is not using the correct numerals";
+	const E_NUMERALS_INVALID = "the number provided is not using the correct numerals";
+	const E_INPUT_EXCEEDS_INT_LIMIT = "the number provided is too long";
+
+	/**
+	 * Base A's name.
+	 *
+	 * @var string
+	 */
+	private $baseAName = "Base A";
 
 	/**
 	 * Base A radix value.
@@ -108,6 +118,13 @@ class Havoc_Base
 	 * @var int
 	 */
 	private $baseAOrdersCount = 3;
+
+	/**
+	 * Base B's name.
+	 *
+	 * @var string
+	 */
+	private $baseBName = "Base B";
 
 	/**
 	 * Base B radix value.
@@ -188,6 +205,14 @@ class Havoc_Base
 			$this->setBaseBRadix();
 		}
 
+		if (!empty($params["base_a_name"])) {
+			$this->setBaseAName($params["base_a_name"]);
+		}
+
+		if (!empty($params["base_b_name"])) {
+			$this->setBaseBName($params["base_b_name"]);
+		}
+
 		if (!empty($params["base_a_orderscount"])) {
 			$this->setBaseAOrdersCount($params["base_a_orderscount"]);
 		}
@@ -235,7 +260,7 @@ class Havoc_Base
 		$numberAsArray = str_split($number);
 
 		try {
-			if (empty($number)) {
+			if ("" === $number) {
 				throw new OutOfBoundsException(self::E_NO_NUMBER);
 			}
 
@@ -246,6 +271,8 @@ class Havoc_Base
 			throw new RuntimeException(
 				sprintf(
 					self::EF_CANNOT_CONVERT_AB,
+					$this->getBaseAName(),
+					$this->getBaseBName(),
 					$re->getMessage()
 				)
 			);
@@ -339,7 +366,7 @@ class Havoc_Base
 		$numberAsArray = str_split($number);
 
 		try {
-			if (empty($number)) {
+			if ("" === $number) {
 				throw new OutOfBoundsException(self::E_NO_NUMBER);
 			}
 
@@ -350,6 +377,8 @@ class Havoc_Base
 			throw new RuntimeException(
 				sprintf(
 					self::EF_CANNOT_CONVERT_BA,
+					$this->getBaseBName(),
+					$this->getBaseAName(),
 					$re->getMessage()
 				)
 			);
@@ -475,7 +504,10 @@ class Havoc_Base
 			if ($i === $resolution) {
 				$resolved = round($pointer, 0, PHP_ROUND_HALF_UP);
 
-				# TODO This should be looked at. Error of calculation? Some numbers, such as 0.33 round up to base.
+				# TODO This should be looked at.
+				# Converting 0.33 to dozenal yields a 2nd decimal place index of [12] when it rounds up.
+				# This clamps any decimal places to within the bounds of their respective radix.
+				# Such as in the example above, where [12] is clamped to [11]. [12] is not an index in base 12.
 				if ($resolved >= $base) {
 					$resolved = $resolved - 1;
 				}
@@ -506,7 +538,9 @@ class Havoc_Base
 
 			array_push($digits, $result);
 
-			$number = intdiv($number, $base);
+			# TODO Not having to suppress this error would be nice.
+			# Triggers a warning when giving a float because PHP converts huge ints to floats.
+			$number = @intdiv($number, $base);
 		}
 
 		if (empty($digits)) {
@@ -759,6 +793,26 @@ class Havoc_Base
 	}
 
 	/**
+	 * Returns Base A's Name.
+	 *
+	 * @return string
+	 */
+	public function getBaseAName(): string
+	{
+		return $this->baseAName;
+	}
+
+	/**
+	 * Sets Base A's Name.
+	 *
+	 * @param string $name
+	 */
+	public function setBaseAName ($name)
+	{
+		$this->baseAName = $name;
+	}
+
+	/**
 	 * Returns Base A Radix.
 	 *
 	 * @return int
@@ -802,12 +856,33 @@ class Havoc_Base
 			throw new RuntimeException(
 				sprintf(
 					self::EF_CANNOT_SET_BASE_A_NUMERALS,
+					$this->getBaseAName(),
 					$re->getMessage()
 				)
 			);
 		}
 
 		$this->baseANumerals = $numerals;
+	}
+
+	/**
+	 * Returns Base B's Name.
+	 *
+	 * @return string
+	 */
+	public function getBaseBName(): string
+	{
+		return $this->baseBName;
+	}
+
+	/**
+	 * Sets Base B's Name.
+	 *
+	 * @param string $name
+	 */
+	public function setBaseBName ($name)
+	{
+		$this->baseBName = $name;
 	}
 
 	/**
@@ -854,6 +929,7 @@ class Havoc_Base
 			throw new RuntimeException(
 				sprintf(
 					self::EF_CANNOT_SET_BASE_B_NUMERALS,
+					$this->getBaseBName(),
 					$re->getMessage()
 				)
 			);
