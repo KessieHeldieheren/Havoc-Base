@@ -1009,7 +1009,7 @@ class Havoc_Base
 	protected function renderDigitsInBaseBNumerals(array $indices): array
 	{
 		# Numerals of the host base.
-		$numerals = $this->getBaseANumerals();
+		$numerals = $this->getBaseBNumerals();
 
 		# Return result.
 		return $this->renderDigitsInBaseXNumerals($indices, $numerals);
