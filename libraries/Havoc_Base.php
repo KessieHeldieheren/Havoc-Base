@@ -249,8 +249,12 @@ class Havoc_Base
 	 * @param bool $format_numeric
 	 * @return array|string
 	 */
-	public function convertAb(string $number, bool $convert_to_base_numerals = true, bool $return_array = true, bool $format_numeric = false)
-	{
+	public function convertAb(
+		string $number,
+		bool $convert_to_base_numerals = true,
+		bool $return_array = true,
+		bool $format_numeric = false
+	) {
 		$hostDelimiter = $this->getBaseAFractionalDelimiter();
 		$targetDelimiter = $this->getBaseBFractionalDelimiter();
 		$hostOrdersSeperator = $this->getBaseAOrdersSeperator();
@@ -327,8 +331,12 @@ class Havoc_Base
 	 * @param bool $format_numeric
 	 * @return array|string
 	 */
-	private function convertArrayAb(array $number, bool $convert_to_base_numerals = true, bool $return_array = true, bool $format_numeric = false)
-	{
+	private function convertArrayAb(
+		array $number,
+		bool $convert_to_base_numerals = true,
+		bool $return_array = true,
+		bool $format_numeric = false
+	) {
 		$result = $this->convertBaseAb($number);
 
 		if ($convert_to_base_numerals) {
@@ -355,8 +363,12 @@ class Havoc_Base
 	 * @param bool $format_numeric
 	 * @return array|string
 	 */
-	public function convertBa(string $number, bool $convert_to_base_numerals = true, bool $return_array = true, bool $format_numeric = false)
-	{
+	public function convertBa(
+		string $number,
+		bool $convert_to_base_numerals = true,
+		bool $return_array = true,
+		bool $format_numeric = false
+	) {
 		$hostDelimiter = $this->getBaseBFractionalDelimiter();
 		$targetDelimiter = $this->getBaseAFractionalDelimiter();
 		$hostOrdersSeperator = $this->getBaseBOrdersSeperator();
@@ -433,8 +445,12 @@ class Havoc_Base
 	 * @param bool $format_numeric
 	 * @return array|string
 	 */
-	private function convertArrayBa(array $number, bool $convert_to_base_numerals = true, bool $return_array = true, bool $format_numeric = false)
-	{
+	private function convertArrayBa(
+		array $number,
+		bool $convert_to_base_numerals = true,
+		bool $return_array = true,
+		bool $format_numeric = false
+	) {
 		$result = $this->convertBaseBa($number);
 
 		if ($convert_to_base_numerals) {
