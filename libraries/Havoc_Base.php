@@ -3,15 +3,24 @@
 /**
  * Base conversions class.
  *
+ * If you require arbitrarily large numbers, use methods prefixed with bc.
+ *
  * Commonly called a Base N Converter (Base N).
  *
  * Allows converting between arbitrary bases in positional numeral systems, given arbitrary numerals.
+ *
+ * If you want to convert between many bases and not just an arbitrary A and an arbitrary B base,
+ * then select a mid-way base (such as decimal) and instantiate this class for each base you wish to use,
+ * where Base A is your mid-way base, and Base B is the base you wish to convert to.
+ * Then use the mid-way base to convert from Base X to Base Mid-Way to Base Y.
  *
  * This is intended to work with CodeIgniter 3 as a library,
  * so the constructor takes an array of parameters.
  *
  * Provide one parameter with a key named base_a_numerals, and an auto-indexed array of the numerals.
  * Do the same for an array key named base_b_numerals.
+ *
+ * The term Base X refers to either base A or base B internally.
  *
  * $params = [
  *  base_a_numerals [ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" ],
@@ -51,11 +60,14 @@
  *
  * - format_numeric: true returns a numerically formatted string, including 'thousands' separators.
  *
- * @todo Implement arbitrary numeric precision (BCMath or GMP) to exceed integer limits. This is a priority (v2.5).
+ * @todo Potentially implement arbitrarily precise fractions (v2.5.8)
+ * @todo Implement scientific notation (v2.6)
+ * @todo Implement short notation (v2.65)
+ * @todo Implement methods for building a calculator (v3.0)
  *
  * @author Kessie Heldieheren <me@kessie.gold>
  * @package Havoc
- * @version 2.45
+ * @version 2.5.7
  */
 class Havoc_Base
 {
@@ -67,9 +79,11 @@ class Havoc_Base
 	const EF_CANNOT_SET_BASE_B_NUMERALS = "Cannot set %s's numerals list because %s.";
 	const EF_CANNOT_CONVERT_AB = "Cannot begin a conversion from %s to %s because %s.";
 	const EF_CANNOT_CONVERT_BA = "Cannot begin a conversion from %s to %s because %s.";
+	const EF_CANNOT_CONVERT_XY = "Cannot begin a conversion from %s to %s because %s.";
 	const EF_CANNOT_INTDIV = "Cannot perform division on the input because %s.";
 	const EF_CANNOT_FORMAT_A = "Cannot render %s number formatted because %s.";
 	const EF_CANNOT_FORMAT_B = "Cannot render %s number formatted because %s.";
+	const EF_CANNOT_FORMAT_X = "Cannot render %s number formatted because %s.";
 
 	/* Class messages (messages) */
 	const E_BASE_A_NUMERALS_EMPTY = "the first parameter is empty or not an array";
@@ -81,6 +95,13 @@ class Havoc_Base
 	// </editor-fold>
 
 	// <editor-fold desc="<Properties>" defaultstate="collapsed">
+	/**
+	 * Flagging this as true will use BCMath for arbitrary number precision.
+	 *
+	 * @var bool
+	 */
+	private $useArbitraryPrecision = false;
+
 	/**
 	 * Base A's name.
 	 *
@@ -279,108 +300,22 @@ class Havoc_Base
 		bool $return_array = true,
 		bool $format_numeric = false
 	) {
-		# These variables assist in number validation.
-		# Fractional delimiter of host base.
-		$hostDelimiter = $this->getBaseAFractionalDelimiter();
-
-		# Fractional delimiter of target base.
-		$targetDelimiter = $this->getBaseBFractionalDelimiter();
-
-		# Orders separator of host base.
-		$hostOrdersSeperator = $this->getBaseAOrdersSeperator();
-
-		# Radix of host base.
-		$hostBase = $this->getBaseARadix();
-
-		# Radix of target base.
-		$targetBase = $this->getBaseBRadix();
-
-		# Radix, delimiter, and separator to provide a list of valid input.
-		$validNumerals = array_merge($this->getBaseANumerals(), [$hostDelimiter, $hostOrdersSeperator]);
-
-		# The entire number split into an array.
-		$numberAsArray = str_split($number);
-
-		try {
-			# If an empty string is given as an input. This is not a valid number.
-			if ("" === $number) {
-				throw new OutOfBoundsException(self::E_NO_NUMBER);
-			}
-
-			# If an input is not a valid host base number (including formatting).
-			if (false === $this->validateNumberString($numberAsArray, $validNumerals)) {
-				throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
-			}
-		} catch (RuntimeException $re) {
-			throw new RuntimeException(
-				sprintf(
-					self::EF_CANNOT_CONVERT_AB,
-					$this->getBaseAName(),
-					$this->getBaseBName(),
-					$re->getMessage()
-				)
-			);
-		}
-
-		# Split input into its components:-
-		# [0] = whole number component.
-		# [1] = fraction component if provided.
-		$components = $this->splitNumberIntoComponents($number, $hostDelimiter);
-
-		# If a fractional element was given as input.
-		if (isset($components[1])) {
-			# Fractional element split into an array.
-			$fraction = str_split($components[1]);
-
-			# Fractional element rendered as indices of its radix.
-			$fraction_digits = $this->renderNumeralsInBaseAIndices($fraction);
-
-			# Fractional precision (a.k.a decimal precision) of the fractional element.
-			$resolution = count($fraction_digits);
-
-			# Fractional element converted from its base as indices into a decimal fraction.
-			$baseAToDec = $this->convertFractionBaseToDec($fraction_digits, $hostBase);
-
-			# Decimal of previous result converted into the target base as indices of its radix.
-			$result_fraction = $this->renderDigitsInBaseBNumerals(
-				$this->convertFractionDecToBase($baseAToDec, $resolution, $targetBase)
-			);
-		}
-
-		# The basic number, stripped of the orders separators.
-		$number = str_replace($hostOrdersSeperator, "", $components[0]);
-
-		# Number element (integer) element split into an array.
-		$number = str_split($number, 1);
-
-		# Number element rendered as indices of its radix.
-		$number_digits = $this->renderNumeralsInBaseAIndices($number);
-
-		# Number element converted into the target base as indices of its radix.
-		$result_number = $this->convertArrayAb(
-			$number_digits,
+		return $this->convertXy(
+			$number,
+			true,
+			$this->getBaseAName(),
+			$this->getBaseBName(),
+			$this->getBaseAFractionalDelimiter(),
+			$this->getBaseBFractionalDelimiter(),
+			$this->getBaseAOrdersSeperator(),
+			$this->getBaseARadix(),
+			$this->getBaseBRadix(),
+			$this->getBaseANumerals(),
+			$this->getBaseBNumerals(),
 			$convert_to_base_numerals,
 			$return_array,
 			$format_numeric
 		);
-
-		# If a fractional element was set.
-		if (isset($result_fraction)) {
-			# If not returning an array result
-			if (false === $return_array) {
-				# Format fractional element as a string.
-				$result_fraction = implode("", $result_fraction);
-
-				# Return number and fractional element joined by the target base delimiter.
-				return ($result_number . $targetDelimiter . $result_fraction);
-			}
-
-			# Return an array, merging the number and fractional element joined by the target base delimiter.
-			return (array_merge($result_number, $targetDelimiter, $result_fraction));
-		}
-
-		# Return an array containing only the number element.
-		return $result_number;
 	}
 
 	/**
@@ -438,108 +373,22 @@ class Havoc_Base
 		bool $return_array = true,
 		bool $format_numeric = false
 	) {
-		# These variables assist in number validation.
-		# Fractional delimiter of host base.
-		$hostDelimiter = $this->getBaseBFractionalDelimiter();
-
-		# Fractional delimiter of target base.
-		$targetDelimiter = $this->getBaseAFractionalDelimiter();
-
-		# Orders separator of host base.
-		$hostOrdersSeperator = $this->getBaseBOrdersSeperator();
-
-		# Radix of host base.
-		$hostBase = $this->getBaseBRadix();
-
-		# Radix of target base.
-		$targetBase = $this->getBaseARadix();
-
-		# Radix, delimiter, and separator to provide a list of valid input.
-		$validNumerals = array_merge($this->getBaseBNumerals(), [$hostDelimiter, $hostOrdersSeperator]);
-
-		# The entire number split into an array.
-		$numberAsArray = str_split($number);
-
-		try {
-			# If an empty string is given as an input. This is not a valid number.
-			if ("" === $number) {
-				throw new OutOfBoundsException(self::E_NO_NUMBER);
-			}
-
-			# If an input is not a valid host base number (including formatting).
-			if (false === $this->validateNumberString($numberAsArray, $validNumerals)) {
-				throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
-			}
-		} catch (RuntimeException $re) {
-			throw new RuntimeException(
-				sprintf(
-					self::EF_CANNOT_CONVERT_AB,
-					$this->getBaseBName(),
-					$this->getBaseAName(),
-					$re->getMessage()
-				)
-			);
-		}
-
-		# Split input into its components:-
-		# [0] = whole number component.
-		# [1] = fraction component if provided.
-		$components = $this->splitNumberIntoComponents($number, $hostDelimiter);
-
-		# If a fractional element was given as input.
-		if (isset($components[1])) {
-			# Fractional element split into an array.
-			$fraction = str_split($components[1]);
-
-			# Fractional element rendered as indices of its radix.
-			$fraction_digits = $this->renderNumeralsInBaseBIndices($fraction);
-
-			# Fractional precision (a.k.a decimal precision) of the fractional element.
-			$resolution = count($fraction_digits);
-
-			# Fractional element converted from its base as indices into a decimal fraction.
-			$baseAToDec = $this->convertFractionBaseToDec($fraction_digits, $hostBase);
-
-			# Decimal of previous result converted into the target base as indices of its radix.
-			$result_fraction = $this->renderDigitsInBaseANumerals(
-				$this->convertFractionDecToBase($baseAToDec, $resolution, $targetBase)
-			);
-		}
-
-		# The basic number, stripped of the orders separators.
-		$number = str_replace($hostOrdersSeperator, "", $components[0]);
-
-		# Number element (integer) element split into an array.
-		$number = str_split($number, 1);
-
-		# Number element rendered as indices of its radix.
-		$number_digits = $this->renderNumeralsInBaseBIndices($number);
-
-		# Number element converted into the target base as indices of its radix.
-		$result_number = $this->convertArrayBa(
-			$number_digits,
+		return $this->convertXy(
+			$number,
+			false,
+			$this->getBaseBName(),
+			$this->getBaseAName(),
+			$this->getBaseBFractionalDelimiter(),
+			$this->getBaseAFractionalDelimiter(),
+			$this->getBaseBOrdersSeperator(),
+			$this->getBaseBRadix(),
+			$this->getBaseARadix(),
+			$this->getBaseBNumerals(),
+			$this->getBaseANumerals(),
 			$convert_to_base_numerals,
 			$return_array,
 			$format_numeric
 		);
-
-		# If a fractional element was set.
-		if (isset($result_fraction)) {
-			# If not returning an array result.
-			if (false === $return_array) {
-				# Format fractional element as a string.
-				$result_fraction = implode("", $result_fraction);
-
-				# Return number and fractional element joined by the target base delimiter.
-				return ($result_number . $targetDelimiter . $result_fraction);
-			}
-
-			# Return an array, merging the number and fractional element joined by the target base delimiter.
-			return (array_merge($result_number, $targetDelimiter, $result_fraction));
-		}
-
-		# Return an array containing only the number element.
-		return $result_number;
 	}
 
 	/**
@@ -578,6 +427,138 @@ class Havoc_Base
 		# Return string.
 		return implode("", $result);
 	}
+
+	/**
+	 * @param string $number
+	 * @param bool $is_base_a
+	 * @param string $host_name
+	 * @param string $target_name
+	 * @param string $host_delimiter
+	 * @param string $target_delimiter
+	 * @param string $host_orders_seperator
+	 * @param int $host_base
+	 * @param int $target_base
+	 * @param array $host_numerals
+	 * @param array $target_numerals
+	 * @param bool $convert_to_base_numerals
+	 * @param bool $return_array
+	 * @param bool $format_numeric
+	 * @return array|string
+	 */
+	public function convertXy(
+		string $number,
+		bool $is_base_a,
+		string $host_name,
+		string $target_name,
+		string $host_delimiter,
+		string $target_delimiter,
+		string $host_orders_seperator,
+		int $host_base,
+		int $target_base,
+		array $host_numerals,
+		array $target_numerals,
+		bool $convert_to_base_numerals = true,
+		bool $return_array = true,
+		bool $format_numeric = false
+	) {
+		# Radix, delimiter, and separator to provide a list of valid input.
+		$valid_numerals = array_merge($host_numerals, [$host_delimiter, $host_orders_seperator]);
+
+		# The entire number split into an array.
+		$number_as_array = str_split($number);
+
+		try {
+			# If an empty string is given as an input. This is not a valid number.
+			if ("" === $number) {
+				throw new OutOfBoundsException(self::E_NO_NUMBER);
+			}
+
+			# If an input is not a valid host base number (including formatting).
+			if (false === $this->validateNumberString($number_as_array, $valid_numerals)) {
+				throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
+			}
+		} catch (RuntimeException $re) {
+			throw new RuntimeException(
+				sprintf(
+					self::EF_CANNOT_CONVERT_XY,
+					$host_name,
+					$target_name,
+					$re->getMessage()
+				)
+			);
+		}
+
+		# Split input into its components:-
+		# [0] = whole number component.
+		# [1] = fraction component if provided.
+		$components = $this->splitNumberIntoComponents($number, $host_delimiter);
+
+		# If a fractional element was given as input.
+		if (isset($components[1])) {
+			# Fractional element split into an array.
+			$fraction = str_split($components[1]);
+
+			# Fractional element rendered as indices of its radix.
+			$fraction_digits = $this->renderNumeralsInBaseXIndices($fraction, $host_numerals);
+
+			# Fractional precision (a.k.a decimal precision) of the fractional element.
+			$resolution = count($fraction_digits);
+
+			# Fractional element converted from its base as indices into a decimal fraction.
+			$baseAToDec = $this->convertFractionBaseToDec($fraction_digits, $host_base);
+
+			# Decimal of previous result converted into the target base as indices of its radix.
+			$result_fraction = $this->renderDigitsInBaseXNumerals(
+				$this->convertFractionDecToBase($baseAToDec, $resolution, $target_base),
+				$target_numerals
+			);
+		}
+
+		# The basic number, stripped of the orders separators.
+		$number = str_replace($host_orders_seperator, "", $components[0]);
+
+		# Number element (integer) element split into an array.
+		$number = str_split($number, 1);
+
+		# Number element rendered as indices of its radix.
+		$number_indices = $this->renderNumeralsInBaseXIndices($number, $host_numerals);
+
+		# TODO Not having to have this if statement and instead integrate related methods.
+		# Number element converted into the target base as indices of its radix.
+		if ($is_base_a) {
+			$result_number = $this->convertArrayAb(
+				$number_indices,
+				$convert_to_base_numerals,
+				$return_array,
+				$format_numeric
+			);
+		} else {
+			$result_number = $this->convertArrayBa(
+				$number_indices,
+				$convert_to_base_numerals,
+				$return_array,
+				$format_numeric
+			);
+		}
+
+		# If a fractional element was set.
+		if (isset($result_fraction)) {
+			# If not returning an array result.
+			if (false === $return_array) {
+				# Format fractional element as a string.
+				$result_fraction = implode("", $result_fraction);
+
+				# Return number and fractional element joined by the target base delimiter.
+				return ($result_number . $target_delimiter . $result_fraction);
+			}
+
+			# Return an array, merging the number and fractional element joined by the target base delimiter.
+			return (array_merge($result_number, $target_delimiter, $result_fraction));
+		}
+
+		# Return an array containing only the number element.
+		return $result_number;
+	}
 	// </editor-fold>
 
 	// <editor-fold desc="<Formatting Numbers>" defaultstate="collapsed">
@@ -590,83 +571,15 @@ class Havoc_Base
 	 */
 	public function formatBaseANumber(string $number, bool $return_array = false)
 	{
-		# These variables assist in number validation.
-		# Fractional delimiter of host base.
-		$hostDelimiter = $this->getBaseAFractionalDelimiter();
-
-		# Orders separator of host base.
-		$hostOrdersSeperator = $this->getBaseAOrdersSeperator();
-
-		# Radix, delimiter, and separator to provide a list of valid input.
-		$validNumerals = array_merge($this->getBaseANumerals(), [$hostDelimiter, $hostOrdersSeperator]);
-
-		# The entire number split into an array.
-		$numberAsArray = str_split($number);
-
-		try {
-			# If an empty string is given as an input. This is not a valid number.
-			if ("" === $number) {
-				throw new OutOfBoundsException(self::E_NO_NUMBER);
-			}
-
-			# If an input is not a valid host base number (including formatting).
-			if (false === $this->validateNumberString($numberAsArray, $validNumerals)) {
-				throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
-			}
-		} catch (RuntimeException $re) {
-			throw new RuntimeException(
-				sprintf(
-					self::EF_CANNOT_FORMAT_A,
-					$this->getBaseAName(),
-					$re->getMessage()
-				)
-			);
-		}
-
-		# Split input into its components:-
-		# [0] = whole number component.
-		# [1] = fraction component if provided.
-		$components = $this->splitNumberIntoComponents($number, $hostDelimiter);
-
-		# If a fractional element was given as input.
-		if (isset($components[1])) {
-			$fraction = str_split($components[1]);
-			$fraction_digits = $this->renderNumeralsInBaseAIndices($fraction);
-			$result_fraction = $this->renderDigitsInBaseANumerals($fraction_digits);
-		}
-
-		# The basic number, stripped of the orders separators.
-		$number = str_replace($hostOrdersSeperator, "", $components[0]);
-
-		# Number element (integer) element split into an array.
-		$number = str_split($number, 1);
-
-		# Number element rendered as indices of its radix.
-		$number_digits = $this->renderNumeralsInBaseAIndices($number);
-
-		# Number element formatted.
-		$result_number = $this->formatBaseANumeric($this->renderDigitsInBaseANumerals($number_digits));
-
-		# If returning an array.
-		if ($return_array) {
-			# If the fractional element is set.
-			if (isset($result_fraction)) {
-				# Return an array, merging the number and fractional element joined by the target base delimiter.
-				return (array_merge($result_number, [$hostDelimiter], $result_fraction));
-			}
-
-			# Return an array containing only the number element.
-			return ($result_number);
-		}
-
-		# If the fractional element is set.
-		if (isset($result_fraction)) {
-			# Return the number and fractional element as a string.
-			return implode("", array_merge($result_number, [$hostDelimiter], $result_fraction));
-		}
-
-		# Return the number element as a string.
-		return (implode("", $result_number));
+		return $this->formatBaseXNumber(
+			$number,
+			$this->getBaseAName(),
+			$this->getBaseAFractionalDelimiter(),
+			$this->getBaseAOrdersCount(),
+			$this->getBaseAOrdersSeperator(),
+			$this->getBaseANumerals(),
+			$return_array
+		);
 	}
 
 	/**
@@ -678,18 +591,44 @@ class Havoc_Base
 	 */
 	public function formatBaseBNumber(string $number, bool $return_array = false)
 	{
-		# These variables assist in number validation.
-		# Fractional delimiter of host base.
-		$hostDelimiter = $this->getBaseBFractionalDelimiter();
+		return $this->formatBaseXNumber(
+			$number,
+			$this->getBaseBName(),
+			$this->getBaseBFractionalDelimiter(),
+			$this->getBaseBOrdersCount(),
+			$this->getBaseBOrdersSeperator(),
+			$this->getBaseBNumerals(),
+			$return_array
+		);
+	}
 
-		# Orders separator of host base.
-		$hostOrdersSeperator = $this->getBaseBOrdersSeperator();
-
+	/**
+	 * Returns a raw Base X number numerically formatted.
+	 *
+	 * @param string $number
+	 * @param string $host_name
+	 * @param string $host_delimiter
+	 * @param string $host_orders_count
+	 * @param string $host_orders_seperator
+	 * @param array $host_numerals
+	 * @param bool $return_array
+	 * @return array|string
+	 * @throws RuntimeException
+	 */
+	public function formatBaseXNumber(
+		string $number,
+		string $host_name,
+		string $host_delimiter,
+		string $host_orders_count,
+		string $host_orders_seperator,
+		array $host_numerals,
+		bool $return_array = false
+	) {
 		# Radix, delimiter, and separator to provide a list of valid input.
-		$validNumerals = array_merge($this->getBaseBNumerals(), [$hostDelimiter, $hostOrdersSeperator]);
+		$valid_numerals = array_merge($host_numerals, [$host_delimiter, $host_orders_seperator]);
 
 		# The entire number split into an array.
-		$numberAsArray = str_split($number);
+		$number_as_array = str_split($number);
 
 		try {
 			# If an empty string is given as an input. This is not a valid number.
@@ -698,14 +637,14 @@ class Havoc_Base
 			}
 
 			# If an input is not a valid host base number (including formatting).
-			if (false === $this->validateNumberString($numberAsArray, $validNumerals)) {
+			if (false === $this->validateNumberString($number_as_array, $valid_numerals)) {
 				throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
 			}
 		} catch (RuntimeException $re) {
 			throw new RuntimeException(
 				sprintf(
-					self::EF_CANNOT_FORMAT_B,
-					$this->getBaseBName(),
+					self::EF_CANNOT_FORMAT_X,
+					$host_name,
 					$re->getMessage()
 				)
 			);
@@ -714,33 +653,37 @@ class Havoc_Base
 		# Split input into its components:-
 		# [0] = whole number component.
 		# [1] = fraction component if provided.
-		$components = $this->splitNumberIntoComponents($number, $hostDelimiter);
+		$components = $this->splitNumberIntoComponents($number, $host_delimiter);
 
 		# If a fractional element was given as input.
 		if (isset($components[1])) {
 			$fraction = str_split($components[1]);
-			$fraction_digits = $this->renderNumeralsInBaseBIndices($fraction);
-			$result_fraction = $this->renderDigitsInBaseBNumerals($fraction_digits);
+			$fraction_digits = $this->renderNumeralsInBaseXIndices($fraction, $host_numerals);
+			$result_fraction = $this->renderDigitsInBaseXNumerals($fraction_digits, $host_numerals);
 		}
 
 		# The basic number, stripped of the orders separators.
-		$number = str_replace($hostOrdersSeperator, "", $components[0]);
+		$number = str_replace($host_orders_seperator, "", $components[0]);
 
 		# Number element (integer) element split into an array.
 		$number = str_split($number, 1);
 
 		# Number element rendered as indices of its radix.
-		$number_digits = $this->renderNumeralsInBaseBIndices($number);
+		$number_indices = $this->renderNumeralsInBaseXIndices($number, $host_numerals);
 
 		# Number element formatted.
-		$result_number = $this->formatBaseBNumeric($this->renderDigitsInBaseBNumerals($number_digits));
+		$result_number = $this->formatBaseXNumeric(
+			$this->renderDigitsInBaseXNumerals($number_indices, $host_numerals),
+			$host_orders_seperator,
+			$host_orders_count
+		);
 
 		# If returning an array.
 		if ($return_array) {
 			# If the fractional element is set.
 			if (isset($result_fraction)) {
 				# Return an array, merging the number and fractional element joined by the target base delimiter.
-				return (array_merge($result_number, [$hostDelimiter], $result_fraction));
+				return (array_merge($result_number, [$host_delimiter], $result_fraction));
 			}
 
 			# Return an array containing only the number element.
@@ -750,7 +693,7 @@ class Havoc_Base
 		# If the fractional element is set.
 		if (isset($result_fraction)) {
 			# Return the number and fractional element as a string.
-			return implode("", array_merge($result_number, [$hostDelimiter], $result_fraction));
+			return implode("", array_merge($result_number, [$host_delimiter], $result_fraction));
 		}
 
 		# Return the number element as a string.
@@ -777,7 +720,7 @@ class Havoc_Base
 		$resolution = count($fraction);
 
 		# Iteration pointer. This is part of the equation below and power'd.
-		# For ever place we move we decrement this.
+		# For every place we move we decrement this.
 		$iteration = -1;
 
 		# Equation pointer. Stores our value as we iterate every place.
@@ -895,6 +838,42 @@ class Havoc_Base
 	}
 
 	/**
+	 * Convert a number to a specific base.
+	 *
+	 * BCMath version.
+	 *
+	 * @param string $number
+	 * @param string $base
+	 * @return array
+	 */
+	private function bcConvertToBase(string $number, string $base): array
+	{
+		# Indices of the radix (result).
+		$indices = [];
+
+		# While the number variable is greater than 0.
+		while (bccomp($number, "0") === 1) {
+			# Result is the number modulo the base.
+			$result = (int) bcmod($number, $base);
+
+			# Push digit to result.
+			array_push($indices, $result);
+
+			# Divide the number by the base for the next loop. Loop ends if this is less than 0.
+			$number = (string) bcdiv($number, $base);
+		}
+
+		# If the digits list is empty.
+		if (empty($indices)) {
+			# Add an index of 0.
+			$indices[0] = 0;
+		}
+
+		# Return the result reversed.
+		return array_reverse($indices);
+	}
+
+	/**
 	 * Convert a number from a specific base.
 	 *
 	 * @param array $indices
@@ -932,6 +911,48 @@ class Havoc_Base
 	}
 
 	/**
+	 * Convert a number from a specific base.
+	 *
+	 * BCMath version.
+	 *
+	 * @param array $indices
+	 * @param string $base
+	 * @return int
+	 * @throws RuntimeException
+	 */
+	private function bcConvertFromBase(array $indices, string $base)
+	{
+		try {
+			# If digits input is empty.
+			if (empty($indices)) {
+				throw new OutOfBoundsException(self::E_DIGITS_ARRAY_EMPTY);
+			}
+		} catch (RuntimeException $re) {
+			throw new RuntimeException(
+				sprintf(
+					self::EF_CANNOT_CONVERT_FROM_BASE,
+					$re->getMessage()
+				)
+			);
+		}
+
+		# Base to string for BCM.
+		$base = (string) $base;
+
+		# Initial number declaration.
+		$result ="0";
+
+		# For each digit provided.
+		foreach ($indices as $index) {
+			# Number is equal to the base times the number plus the digit given.
+			$result = bcadd(bcmul($base, $result), (string) $index);
+		}
+
+		# Return the result.
+		return $result;
+	}
+
+	/**
 	 * Convert a number in base A into base B.
 	 *
 	 * @param array $indices
@@ -940,21 +961,36 @@ class Havoc_Base
 	private function convertBaseAb(array $indices): array
 	{
 		# Radix of host base.
-		$hostBase = $this->getBaseARadix();
+		$host_base = $this->getBaseARadix();
 
 		# Radix of target base.
-		$targetBase = $this->getBaseBRadix();
+		$target_base = $this->getBaseBRadix();
 
-		# Digits converted from the host base.
-		$converted = $this->convertFromBase($indices, $hostBase);
+		# If using arbitrary precision.
+		if ($this->getUseArbitraryPrecision()) {
+			# Digits converted from the host base.
+			$converted = $this->bcConvertFromBase($indices, (string) $host_base);
 
-		# Return digits converted into the target base.
-		return(
-			$this->convertToBase(
-				$converted,
-				$targetBase
-			)
-		);
+			# Return digits converted into the target base.
+			return(
+				$this->bcConvertToBase(
+					$converted,
+					$target_base
+				)
+			);
+		} else {
+			# Digits converted from the host base.
+			$converted = $this->convertFromBase($indices, $host_base);
+
+			# Return digits converted into the target base.
+			return(
+				$this->convertToBase(
+					$converted,
+					$target_base
+				)
+			);
+		}
+
 	}
 
 	/**
@@ -966,21 +1002,35 @@ class Havoc_Base
 	private function convertBaseBa(array $indices): array
 	{
 		# Radix of host base.
-		$hostBase = $this->getBaseBRadix();
+		$host_base = $this->getBaseBRadix();
 
 		# Radix of target base.
-		$targetBase = $this->getBaseARadix();
+		$target_base = $this->getBaseARadix();
 
-		# Digits converted from the host base.
-		$converted = $this->convertFromBase($indices, $hostBase);
+		# If using arbitrary precision.
+		if ($this->getUseArbitraryPrecision()) {
+			# Digits converted from the host base.
+			$converted = $this->bcConvertFromBase($indices, (string) $host_base);
 
-		# Return digits converted into the target base.
-		return(
-			$this->convertToBase(
-				$converted,
-				$targetBase
-			)
-		);
+			# Return digits converted into the target base.
+			return(
+				$this->bcConvertToBase(
+					$converted,
+					$target_base
+				)
+			);
+		} else {
+			# Digits converted from the host base.
+			$converted = $this->convertFromBase($indices, $host_base);
+
+			# Return digits converted into the target base.
+			return(
+				$this->convertToBase(
+					$converted,
+					$target_base
+				)
+			);
+		}
 	}
 	// </editor-fold>
 
@@ -1133,23 +1183,23 @@ class Havoc_Base
 	/**
 	 * Adds a space between every three digits in a Base X number.
 	 *
-	 * @param array $digits
+	 * @param array $numerals
 	 * @param string $orders_separator
 	 * @param int $orders_count
 	 * @return array
 	 */
-	private function formatBaseXNumeric(array $digits, string $orders_separator, int $orders_count): array
+	private function formatBaseXNumeric(array $numerals, string $orders_separator, int $orders_count): array
 	{
 		# Split the array into chunks, where the length of chunks is defined by the orders separator.
 		# Then we reverse the array so that we can iterate over it and add the orders separator as we go.
 		# If you do not reverse the array, you won't get accurate results for non-multiples of the order.
-		$digits = array_chunk(array_reverse($digits), $orders_count);
+		$numerals = array_chunk(array_reverse($numerals), $orders_count);
 
 		# Result.
 		$result = [];
 
 		# For each digit as a set.
-		foreach ($digits as $set) {
+		foreach ($numerals as $set) {
 			# For each set as a digit.
 			foreach ($set as $digit) {
 				# Add the digit to the results.
@@ -1213,6 +1263,30 @@ class Havoc_Base
 	// </editor-fold>
 
 	// <editor-fold desc="<Get/Set>" defaultstate="collapsed">
+	/**
+	 * Returns the use arbitrary precision flag.
+	 *
+	 * @return string
+	 */
+	public function getUseArbitraryPrecision(): string
+	{
+		return $this->useArbitraryPrecision;
+	}
+
+	/**
+	 * Sets the use arbitrary precision flag.
+	 *
+	 * Flagging this as true will use BCMath for arbitrarily large numbers.
+	 *
+	 * Do not flag this as true if BCMath is not installed.
+	 *
+	 * @param string $arbitraryPrecision
+	 */
+	public function setUseArbitraryPrecision ($arbitraryPrecision)
+	{
+		$this->useArbitraryPrecision = $arbitraryPrecision;
+	}
+
 	/**
 	 * Returns Base A's Name.
 	 *
