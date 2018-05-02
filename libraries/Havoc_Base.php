@@ -8,6 +8,7 @@
  * Commonly called a Base N Converter (Base N).
  *
  * Allows converting between arbitrary bases in positional numeral systems, given arbitrary numerals.
+ * This is flagged with Havoc_Base->setUseArbitraryPrecision(true).
  *
  * If you want to convert between many bases and not just an arbitrary A and an arbitrary B base,
  * then select a mid-way base (such as decimal) and instantiate this class for each base you wish to use,
@@ -22,15 +23,17 @@
  *
  * The term Base X refers to either base A or base B internally.
  *
+ * Here is an example of params to the constructor.
  * $params = [
- *  base_a_numerals [ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" ],
- *  base_b_numerals [ "X", "E", "D", "T", "N", "F", "H", "K", "V", "L", "A", "Q" ],
- *  base_a_orderscount [ 3 ],
- *  base_b_orderscount [ 3 ],
- *  base_a_ordersseparator [ "," ],
- *  base_b_ordersseparator [ " " ],
- *  base_a_fractionaldelimiter [ "." ],
- *  base_b_fractionaldelimiter [ ";" ]
+ *  base_a_numerals => [ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" ],
+ *  base_b_numerals => [ "X", "E", "D", "T", "N", "F", "H", "K", "V", "L", "A", "Q" ],
+ *  base_a_orderscount => 3,
+ *  base_b_orderscount => 3,
+ *  base_a_ordersseparator => ",",
+ *  base_b_ordersseparator => " ",
+ *  base_a_fractionaldelimiter => ".",
+ *  base_b_fractionaldelimiter => ";",
+ *  use_arbitrary_precision => true
  * ]
  *
  * - base_a_numerals: Numerals for Base A.
@@ -41,7 +44,9 @@
  * - base_b_ordersseparator: Digit grouping separator. See above.
  * - base_a_fractionaldelimiter: Delimiter for fractions. Example: X + N -> X;N
  * - base_b_fractionaldelimiter: Delimiter for fractions. Example: 0 + 33 -> 0.33
+ * - use_arbitrary_precision: If true, module use BCMath for arbitrarily large numbers.
  *
+ * Use Havoc_Base->setUseArbitraryPrecision([bool]) to determine whether or not to use BCMath arbitrary precision.
  * Use Havoc_Base->convertAb() to convert base A into base B.
  * Use Havoc_Base->convertBa() to convert base B into base A.
  * Use Havoc_Base->formatBaseANumber() to format a given number in the provided numeric format. I.e. EXXX -> E XXX.
@@ -62,12 +67,16 @@
  *
  * @todo Potentially implement arbitrarily precise fractions (v2.5.8)
  * @todo Implement scientific notation (v2.6)
- * @todo Implement short notation (v2.65)
+ * @todo Implement short notation (v2.6.5)
  * @todo Implement methods for building a calculator (v3.0)
  *
  * @author Kessie Heldieheren <me@kessie.gold>
  * @package Havoc
  * @version 2.5.7
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 class Havoc_Base
 {
@@ -277,6 +286,10 @@ class Havoc_Base
 		# Set Base B fractional delimiter if provided.
 		if (!empty($params["base_b_fractionaldelimiter"])) {
 			$this->setBaseBFractionalDelimiter($params["base_b_fractionaldelimiter"]);
+		}
+
+		if (!empty($params["use_arbitrary_precision"])) {
+			$this->setUseArbitraryPrecision($params["use_arbitrary_precision"]);
 		}
 	}
 	// </editor-fold>
@@ -778,11 +791,11 @@ class Havoc_Base
 				# Round up to acquire a resolved final fractional element.
 				$resolved = round($pointer, 0, PHP_ROUND_HALF_UP);
 
-				# TODO This should be looked at.
-				# Converting 0.33 to dozenal yields a 2nd decimal place index of [12] when it rounds up.
-				# This clamps any decimal places to within the bounds of their respective radix.
-				# Such as in the example above, where [12] is clamped to [11]. [12] is not an index in base 12.
+				# If the resolved index rounds up to the increment of the base.
 				if ($resolved >= $base) {
+					# Clamps the index back to a sane value.
+					# Prevents rounding, for example, a binary index of [1] up to [2]
+					# and attempting to display a binary numeral for [2], which does not exist.
 					$resolved = $resolved - 1;
 				}
 
@@ -822,8 +835,7 @@ class Havoc_Base
 			array_push($indices, $result);
 
 			# Divide the number by the base for the next loop. Loop ends if this is less than 0.
-			# TODO Not having to suppress this error would be nice.
-			# Triggers a warning when giving a float because PHP converts huge ints to floats.
+			# Use BCMath to avoid the errors here.
 			$number = @intdiv($number, $base);
 		}
 
