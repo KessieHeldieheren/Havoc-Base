@@ -8,7 +8,7 @@
  * Commonly called a Base N Converter (Base N).
  *
  * Allows converting between arbitrary bases in positional numeral systems, given arbitrary numerals.
- * This is flagged with Havoc_Base->setUseArbitraryPrecision(true).
+ * To use BCMath, flag Havoc_Base->setUseArbitraryPrecision(true).
  *
  * If you want to convert between many bases and not just an arbitrary A and an arbitrary B base,
  * then select a mid-way base (such as decimal) and instantiate this class for each base you wish to use,
@@ -237,6 +237,9 @@ class Havoc_Base
 				)
 			);
 		}
+
+		# Force BC Scale to 0.
+		bcscale(0);
 
 		# Setup Base A.
 		$this->setBaseANumerals($params["base_a_numerals"]);
@@ -518,11 +521,11 @@ class Havoc_Base
 			$resolution = count($fraction_digits);
 
 			# Fractional element converted from its base as indices into a decimal fraction.
-			$baseAToDec = $this->convertFractionBaseToDec($fraction_digits, $host_base);
+			$base_a_to_dec = $this->convertFractionBaseToDec($fraction_digits, $host_base);
 
 			# Decimal of previous result converted into the target base as indices of its radix.
 			$result_fraction = $this->renderDigitsInBaseXNumerals(
-				$this->convertFractionDecToBase($baseAToDec, $resolution, $target_base),
+				$this->convertFractionDecToBase($base_a_to_dec, $resolution, $target_base),
 				$target_numerals
 			);
 		}
@@ -724,7 +727,7 @@ class Havoc_Base
 	 * @param int $base
 	 * @return float
 	 */
-	private function convertFractionBaseToDec(array $fraction = [], $base): float
+	private function convertFractionBaseToDec(array $fraction = [], int $base): float
 	{
 		# Prevents a rounding error.
 		array_push($fraction, 0);
@@ -739,10 +742,10 @@ class Havoc_Base
 		# Equation pointer. Stores our value as we iterate every place.
 		$pointer = 0;
 
-		# Loop over the fraction as digits.
-		foreach ($fraction as $digit) {
+		# Loop over the fraction as indices of its radix.
+		foreach ($fraction as $index) {
 			# (pointer + digit * base ^ iteration)
-			$pointer = $pointer + $digit * $base ** $iteration;
+			$pointer = $pointer + $index * $base ** $iteration;
 
 			# Decrement iteration value.
 			$iteration--;
@@ -757,12 +760,12 @@ class Havoc_Base
 	 *
 	 * This is the final part of fraction conversions.
 	 *
-	 * @param $fraction
+	 * @param float $fraction
 	 * @param int $resolution
 	 * @param int $base
 	 * @return array
 	 */
-	private function convertFractionDecToBase($fraction, $resolution = 1, $base): array
+	private function convertFractionDecToBase(float $fraction, $resolution = 1, int $base): array
 	{
 		# Result as an empty array.
 		$result = [];
@@ -1252,7 +1255,6 @@ class Havoc_Base
 		# Return the number split by its delimiter.
 		return explode($delimiter, $string);
 	}
-
 	/**
 	 * Returns false if the number string given contains invalid numerals.
 	 *
@@ -1271,6 +1273,70 @@ class Havoc_Base
 		}
 
 		return true;
+	}
+	// </editor-fold>
+
+	// <editor-fold desc="<BCMath Extensions>" defaultstate="collapsed">
+	/**
+	 * Round full up BC math numbers (ceiling).
+	 *
+	 * @param $number
+	 * @return string
+	 * @author Alix Axel <https://stackoverflow.com/users/89771/alix-axel>
+	 */
+	protected function bcceil($number)
+	{
+		if ($number[0] != '-') {
+			return bcadd($number, 1, 0);
+		}
+
+		return bcsub($number, 0, 0);
+	}
+
+	/**
+	 * Round full down BC math numbers (floor).
+	 *
+	 * @param $number
+	 * @return string
+	 * @author Alix Axel <https://stackoverflow.com/users/89771/alix-axel>
+	 */
+	protected function bcfloor($number)
+	{
+		if ($number[0] != '-') {
+			return bcadd($number, 0, 0);
+		}
+
+		return bcsub($number, 1, 0);
+	}
+
+	/**
+	 * Round BC math numbers to a precision.
+	 *
+	 * @param $number
+	 * @param int $precision
+	 * @return string
+	 * @author Alix Axel <https://stackoverflow.com/users/89771/alix-axel>
+	 */
+	protected function bcround($number, $precision = 0)
+	{
+		if ($number[0] != '-') {
+			return bcadd($number, '0.' . str_repeat('0', $precision) . '5', $precision);
+		}
+
+		return bcsub($number, '0.' . str_repeat('0', $precision) . '5', $precision);
+	}
+
+	/**
+	 * Truncate a BC math number (truncation).
+	 *
+	 * Requires BCMath scale 0.
+	 *
+	 * @param string $number
+	 * @return float|int
+	 */
+	protected function bctruncate(string $number)
+	{
+		return bcdiv($number, 1, 0);
 	}
 	// </editor-fold>
 
