@@ -8,7 +8,7 @@
  * Commonly called a Base N Converter (Base N).
  *
  * Allows converting between arbitrary bases in positional numeral systems, given arbitrary numerals.
- * To use BCMath, flag Havoc_Base->setUseArbitraryPrecision(true).
+ * To use BCMath, flag Havoc_Base->flagUseArbitraryPrecision(true).
  *
  * If you want to convert between many bases and not just an arbitrary A and an arbitrary B base,
  * then select a mid-way base (such as decimal) and instantiate this class for each base you wish to use,
@@ -20,6 +20,13 @@
  *
  * Provide one parameter with a key named base_a_numerals, and an auto-indexed array of the numerals.
  * Do the same for an array key named base_b_numerals.
+ *
+ * Negative integers are now supported. May affect fractional rounding.
+ *
+ * Flag the parameter $strip_zeros as true to remove all numerals of zero from numbers.
+ *
+ * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+ * seperators on the zeros, causing an output such as: "0,100".
  *
  * The term Base X refers to either base A or base B internally.
  *
@@ -46,7 +53,7 @@
  * - base_b_fractionaldelimiter: Delimiter for fractions. Example: 0 + 33 -> 0.33
  * - use_arbitrary_precision: If true, module use BCMath for arbitrarily large numbers.
  *
- * Use Havoc_Base->setUseArbitraryPrecision([bool]) to determine whether or not to use BCMath arbitrary precision.
+ * Use Havoc_Base->flagUseArbitraryPrecision([bool]) to determine whether or not to use BCMath arbitrary precision.
  * Use Havoc_Base->convertAb() to convert base A into base B.
  * Use Havoc_Base->convertBa() to convert base B into base A.
  * Use Havoc_Base->formatBaseANumber() to format a given number in the provided numeric format. I.e. EXXX -> E XXX.
@@ -65,14 +72,13 @@
  *
  * - format_numeric: true returns a numerically formatted string, including 'thousands' separators.
  *
- * @todo Potentially implement arbitrarily precise fractions (v2.5.8)
+ * @todo Implement arbitrarily precise fractions (v2.6.0)
  * @todo Implement scientific notation (v2.6)
  * @todo Implement short notation (v2.6.5)
- * @todo Implement methods for building a calculator (v3.0)
  *
  * @author Kessie Heldieheren <me@kessie.gold>
  * @package Havoc
- * @version 2.5.7
+ * @version 2.5.9
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -149,6 +155,13 @@ class Havoc_Base
 	private $baseAFractionalDelimiter = ";";
 
 	/**
+	 * Base A's negative sign.
+	 *
+	 * @var string
+	 */
+	private $baseANegativeSign = "-";
+
+	/**
 	 * After how many orders to place a separator.
 	 *
 	 * Note: this is equivalent to a decimal thousands separator.
@@ -206,6 +219,13 @@ class Havoc_Base
 	private $baseBFractionalDelimiter = ".";
 
 	/**
+	 * Base B's negative sign.
+	 *
+	 * @var string
+	 */
+	private $baseBNegativeSign = "-";
+
+	/**
 	 * After how many orders to place a separator.
 	 *
 	 * Note: this is equivalent to a decimal thousands separator.
@@ -237,9 +257,6 @@ class Havoc_Base
 				)
 			);
 		}
-
-		# Force BC Scale to 0.
-		bcscale(0);
 
 		# Setup Base A.
 		$this->setBaseANumerals($params["base_a_numerals"]);
@@ -291,6 +308,16 @@ class Havoc_Base
 			$this->setBaseBFractionalDelimiter($params["base_b_fractionaldelimiter"]);
 		}
 
+		# Set Base A negative sign f provided.
+		if (!empty($params["base_a_negativesign"])) {
+			$this->setBaseANegativeSign($params["base_a_negativesign"]);
+		}
+
+		# Set Base B negative sign if provided.
+		if (!empty($params["base_b_negativesign"])) {
+			$this->setBaseBNegativeSign($params["base_b_negativesign"]);
+		}
+
 		if (!empty($params["use_arbitrary_precision"])) {
 			$this->setUseArbitraryPrecision($params["use_arbitrary_precision"]);
 		}
@@ -304,17 +331,22 @@ class Havoc_Base
 	 * Method also takes fractions, formatted as prescribed. This method also has provisions for input given
 	 * using the number format provided.
 	 *
+	 * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+	 * seperators on the zeros, causing an output such as: "0,100".
+	 *
 	 * @param string $number
 	 * @param bool $convert_to_base_numerals
 	 * @param bool $return_array
 	 * @param bool $format_numeric
+	 * @param bool $strip_zeros
 	 * @return array|string
 	 */
 	public function convertAb(
 		string $number,
 		bool $convert_to_base_numerals = true,
 		bool $return_array = true,
-		bool $format_numeric = false
+		bool $format_numeric = false,
+		bool $strip_zeros = true
 	) {
 		return $this->convertXy(
 			$number,
@@ -323,6 +355,8 @@ class Havoc_Base
 			$this->getBaseBName(),
 			$this->getBaseAFractionalDelimiter(),
 			$this->getBaseBFractionalDelimiter(),
+			$this->getBaseANegativeSign(),
+			$this->getBaseBNegativeSign(),
 			$this->getBaseAOrdersSeperator(),
 			$this->getBaseARadix(),
 			$this->getBaseBRadix(),
@@ -330,7 +364,8 @@ class Havoc_Base
 			$this->getBaseBNumerals(),
 			$convert_to_base_numerals,
 			$return_array,
-			$format_numeric
+			$format_numeric,
+			$strip_zeros
 		);
 	}
 
@@ -377,17 +412,22 @@ class Havoc_Base
 	 * Method also takes fractions, formatted as prescribed. This method also has provisions for input given
 	 * using the number format provided.
 	 *
+	 * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+	 * seperators on the zeros, causing an output such as: "0,100".
+	 *
 	 * @param string $number
 	 * @param bool $convert_to_base_numerals
 	 * @param bool $return_array
 	 * @param bool $format_numeric
+	 * @param bool $strip_zeros
 	 * @return array|string
 	 */
 	public function convertBa(
 		string $number,
 		bool $convert_to_base_numerals = true,
 		bool $return_array = true,
-		bool $format_numeric = false
+		bool $format_numeric = false,
+		bool $strip_zeros = true
 	) {
 		return $this->convertXy(
 			$number,
@@ -396,6 +436,8 @@ class Havoc_Base
 			$this->getBaseAName(),
 			$this->getBaseBFractionalDelimiter(),
 			$this->getBaseAFractionalDelimiter(),
+			$this->getBaseBNegativeSign(),
+			$this->getBaseANegativeSign(),
 			$this->getBaseBOrdersSeperator(),
 			$this->getBaseBRadix(),
 			$this->getBaseARadix(),
@@ -403,7 +445,8 @@ class Havoc_Base
 			$this->getBaseANumerals(),
 			$convert_to_base_numerals,
 			$return_array,
-			$format_numeric
+			$format_numeric,
+			$strip_zeros
 		);
 	}
 
@@ -445,12 +488,19 @@ class Havoc_Base
 	}
 
 	/**
+	 * Convert a number in Base X into Base Y.
+	 *
+	 * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+	 * seperators on the zeros, causing an output such as: "0,100".
+	 *
 	 * @param string $number
 	 * @param bool $is_base_a
 	 * @param string $host_name
 	 * @param string $target_name
 	 * @param string $host_delimiter
 	 * @param string $target_delimiter
+	 * @param string $host_negative
+	 * @param string $target_negative
 	 * @param string $host_orders_seperator
 	 * @param int $host_base
 	 * @param int $target_base
@@ -459,26 +509,48 @@ class Havoc_Base
 	 * @param bool $convert_to_base_numerals
 	 * @param bool $return_array
 	 * @param bool $format_numeric
+	 * @param bool $strip_zeros
 	 * @return array|string
+	 * @throws RuntimeException
 	 */
-	public function convertXy(
+	private function convertXy(
 		string $number,
 		bool $is_base_a,
 		string $host_name,
 		string $target_name,
 		string $host_delimiter,
 		string $target_delimiter,
+		string $host_negative,
+		string $target_negative,
 		string $host_orders_seperator,
 		int $host_base,
 		int $target_base,
 		array $host_numerals,
 		array $target_numerals,
-		bool $convert_to_base_numerals = true,
-		bool $return_array = true,
-		bool $format_numeric = false
+		bool $convert_to_base_numerals,
+		bool $return_array,
+		bool $format_numeric,
+		bool $strip_zeros
 	) {
-		# Radix, delimiter, and separator to provide a list of valid input.
-		$valid_numerals = array_merge($host_numerals, [$host_delimiter, $host_orders_seperator]);
+		# Radix, delimiter, separator, and negative sign to provide a list of valid input.
+		$valid_numerals = array_merge(
+			$host_numerals,
+			[$host_delimiter, $host_orders_seperator, $host_negative]
+		);
+
+		# Initiate is_negative. True if number is negative.
+		$is_negative = false;
+
+		# Remove negative sign if the number is negative.
+		if ($this->isNegativeString($number, $host_negative)) {
+			$number = ltrim($number, $host_negative);
+			$is_negative = true;
+		}
+
+		# Strip zeroes from input.
+		if ($strip_zeros) {
+			$number = ltrim($number, $host_numerals[0]);
+		}
 
 		# The entire number split into an array.
 		$number_as_array = str_split($number);
@@ -515,19 +587,30 @@ class Havoc_Base
 			$fraction = str_split($components[1]);
 
 			# Fractional element rendered as indices of its radix.
-			$fraction_digits = $this->renderNumeralsInBaseXIndices($fraction, $host_numerals);
+			$fraction_indices = $this->renderNumeralsInBaseXIndices($fraction, $host_numerals);
 
 			# Fractional precision (a.k.a decimal precision) of the fractional element.
-			$resolution = count($fraction_digits);
+			$resolution = count($fraction_indices);
 
-			# Fractional element converted from its base as indices into a decimal fraction.
-			$base_a_to_dec = $this->convertFractionBaseToDec($fraction_digits, $host_base);
+			if ($this->getUseArbitraryPrecision()) {
+				# Fractional element converted from its base as indices into a decimal fraction.
+				$base_a_to_dec = $this->bcConvertFractionBaseToDec($fraction_indices, (string) $host_base);
 
-			# Decimal of previous result converted into the target base as indices of its radix.
-			$result_fraction = $this->renderDigitsInBaseXNumerals(
-				$this->convertFractionDecToBase($base_a_to_dec, $resolution, $target_base),
-				$target_numerals
-			);
+				# Decimal of previous result converted into the target base as indices of its radix.
+				$result_fraction = $this->renderDigitsInBaseXNumerals(
+					$this->bcConvertFractionDecToBase((string) $base_a_to_dec, $resolution, (string) $target_base),
+					$target_numerals
+				);
+			} else {
+				# Fractional element converted from its base as indices into a decimal fraction.
+				$base_a_to_dec = $this->convertFractionBaseToDec($fraction_indices, $host_base);
+
+				# Decimal of previous result converted into the target base as indices of its radix.
+				$result_fraction = $this->renderDigitsInBaseXNumerals(
+					$this->convertFractionDecToBase($base_a_to_dec, $resolution, $target_base),
+					$target_numerals
+				);
+			}
 		}
 
 		# The basic number, stripped of the orders separators.
@@ -557,22 +640,37 @@ class Havoc_Base
 			);
 		}
 
-		# If a fractional element was set.
-		if (isset($result_fraction)) {
-			# If not returning an array result.
-			if (false === $return_array) {
-				# Format fractional element as a string.
-				$result_fraction = implode("", $result_fraction);
-
-				# Return number and fractional element joined by the target base delimiter.
-				return ($result_number . $target_delimiter . $result_fraction);
+		# Format number and return the result.
+		if ($return_array) {
+			# If number is negative.
+			if ($is_negative) {
+				# Prepend the target negative sign to result.
+				array_unshift($result_number, $target_negative);
 			}
 
-			# Return an array, merging the number and fractional element joined by the target base delimiter.
-			return (array_merge($result_number, $target_delimiter, $result_fraction));
+			# If the fractional element is set.
+			if (isset($result_fraction)) {
+				# Return an array, merging the number and fractional element joined by the target base delimiter.
+				return (array_merge($result_number, [$target_delimiter], $result_fraction));
+			}
+
+			# Return array result.
+			return $result_number;
 		}
 
-		# Return an array containing only the number element.
+		# If number is negative.
+		if ($is_negative) {
+			# Prepend the target negative sign to result.
+			$result_number = $target_negative . $result_number;
+		}
+
+		# If the fractional element is set.
+		if (isset($result_fraction)) {
+			# Return string result with fractional element.
+			return $result_number . $target_delimiter . implode("", $result_fraction);
+		}
+
+		# Return string result.
 		return $result_number;
 	}
 	// </editor-fold>
@@ -581,53 +679,70 @@ class Havoc_Base
 	/**
 	 * Returns a raw Base A number numerically formatted.
 	 *
+	 * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+	 * seperators on the zeros, causing an output such as: "0,100".
+	 *
 	 * @param string $number
 	 * @param bool $return_array
+	 * @param bool $strip_zeros
 	 * @return array|string
 	 */
-	public function formatBaseANumber(string $number, bool $return_array = false)
+	public function formatBaseANumber(string $number, bool $return_array = false, bool $strip_zeros = true)
 	{
 		return $this->formatBaseXNumber(
 			$number,
 			$this->getBaseAName(),
 			$this->getBaseAFractionalDelimiter(),
+			$this->getBaseANegativeSign(),
 			$this->getBaseAOrdersCount(),
 			$this->getBaseAOrdersSeperator(),
 			$this->getBaseANumerals(),
-			$return_array
+			$return_array,
+			$strip_zeros
 		);
 	}
 
 	/**
 	 * Returns a raw Base B number numerically formatted.
 	 *
+	 * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+	 * seperators on the zeros, causing an output such as: "0,100".
+	 *
 	 * @param string $number
 	 * @param bool $return_array
+	 * @param bool $strip_zeros
 	 * @return array|string
 	 */
-	public function formatBaseBNumber(string $number, bool $return_array = false)
+	public function formatBaseBNumber(string $number, bool $return_array = false, bool $strip_zeros = true)
 	{
 		return $this->formatBaseXNumber(
 			$number,
 			$this->getBaseBName(),
 			$this->getBaseBFractionalDelimiter(),
+			$this->getBaseBNegativeSign(),
 			$this->getBaseBOrdersCount(),
 			$this->getBaseBOrdersSeperator(),
 			$this->getBaseBNumerals(),
-			$return_array
+			$return_array,
+			$strip_zeros
 		);
 	}
 
 	/**
 	 * Returns a raw Base X number numerically formatted.
 	 *
+	 * Note: if strip zeros is false, and format numeric is true, the numeric formatter will render
+	 * seperators on the zeros, causing an output such as: "0,100".
+	 *
 	 * @param string $number
 	 * @param string $host_name
 	 * @param string $host_delimiter
+	 * @param string $host_negative
 	 * @param string $host_orders_count
 	 * @param string $host_orders_seperator
 	 * @param array $host_numerals
 	 * @param bool $return_array
+	 * @param bool $strip_zeros
 	 * @return array|string
 	 * @throws RuntimeException
 	 */
@@ -635,13 +750,32 @@ class Havoc_Base
 		string $number,
 		string $host_name,
 		string $host_delimiter,
+		string $host_negative,
 		string $host_orders_count,
 		string $host_orders_seperator,
 		array $host_numerals,
-		bool $return_array = false
+		bool $return_array,
+		bool $strip_zeros
 	) {
-		# Radix, delimiter, and separator to provide a list of valid input.
-		$valid_numerals = array_merge($host_numerals, [$host_delimiter, $host_orders_seperator]);
+		# Radix, delimiter, separator, and negative to provide a list of valid input.
+		$valid_numerals = array_merge(
+			$host_numerals,
+			[$host_delimiter, $host_orders_seperator, $host_negative]
+		);
+
+		# Initiate is_negative. True if number is negative.
+		$is_negative = false;
+
+		# Remove negative sign if the number is negative.
+		if ($this->isNegativeString($number, $host_negative)) {
+			$number = ltrim($number, $host_negative);
+			$is_negative = true;
+		}
+
+		# Strip zeroes from input.
+		if ($strip_zeros) {
+			$number = ltrim($number, $host_numerals[0]);
+		}
 
 		# The entire number split into an array.
 		$number_as_array = str_split($number);
@@ -698,8 +832,18 @@ class Havoc_Base
 		if ($return_array) {
 			# If the fractional element is set.
 			if (isset($result_fraction)) {
+				# If number is negative.
+				if ($is_negative) {
+					array_unshift($result_number, $host_negative);
+				}
+
 				# Return an array, merging the number and fractional element joined by the target base delimiter.
 				return (array_merge($result_number, [$host_delimiter], $result_fraction));
+			}
+
+			# If number is negative.
+			if ($is_negative) {
+				$result_number = $host_negative . $result_number;
 			}
 
 			# Return an array containing only the number element.
@@ -708,8 +852,18 @@ class Havoc_Base
 
 		# If the fractional element is set.
 		if (isset($result_fraction)) {
+			# If number is negative.
+			if ($is_negative) {
+				array_unshift($result_number, $host_negative);
+			}
+
 			# Return the number and fractional element as a string.
 			return implode("", array_merge($result_number, [$host_delimiter], $result_fraction));
+		}
+
+		# If number is negative.
+		if ($is_negative) {
+			array_unshift($result_number, $host_negative);
 		}
 
 		# Return the number element as a string.
@@ -756,6 +910,45 @@ class Havoc_Base
 	}
 
 	/**
+	 * Convert a fraction in Base A to decimal.
+	 *
+	 * This is a preliminary conversion. Conversions are in two parts. See the method below this one.
+	 *
+	 * BCMath version.
+	 *
+	 * @param array $fraction
+	 * @param string $base
+	 * @return string
+	 */
+	private function bcConvertFractionBaseToDec(array $fraction = [], string $base): string
+	{
+		# Prevents a rounding error.
+		array_push($fraction, 0);
+
+		# Resolution of the fraction (a.k.a decimal precision).
+		$resolution = (string) count($fraction);
+
+		# Iteration pointer. This is part of the equation below and power'd.
+		# For every place we move we decrement this.
+		$iteration = "-1";
+
+		# Equation pointer. Stores our value as we iterate every place.
+		$pointer = "0";
+
+		# Loop over the fraction as indices of its radix.
+		foreach ($fraction as $index) {
+			# (pointer + digit * base ^ iteration)
+			$pointer = (float) $pointer + $index * $base ** $iteration;
+
+			# Decrement iteration value.
+			$iteration = bcsub($iteration, 1);
+		}
+
+		# Return a result rounded to the nearest decimal place.
+		return $this->bcround($pointer, $resolution);
+	}
+
+	/**
 	 * Convert a fraction in decimal to Base A.
 	 *
 	 * This is the final part of fraction conversions.
@@ -766,6 +959,68 @@ class Havoc_Base
 	 * @return array
 	 */
 	private function convertFractionDecToBase(float $fraction, $resolution = 1, int $base): array
+	{
+		# Result as an empty array.
+		$result = [];
+
+		# Equation pointer. Stores our value as we iterate every place.
+		# Defaulted as the fraction times the base before beginning the loop.
+		$pointer = $fraction * $base;
+
+		# For every decimal place given, do this loop.
+		for ($i = 1; $i <= $resolution; $i++) {
+			# If this is the first loop.
+			if ($i === 1) {
+				# Store the initial pointer value into the result floored.
+				array_push($result, floor($pointer));
+				continue;
+			}
+
+			# Value of the pointer truncated to its fractional element.
+			$truncated = $pointer - (int) $pointer;
+
+			# Next pointer in the loop is the truncated pointer times the base.
+			$pointer = $truncated * $base;
+
+			# If this loop is the final loop.
+			if ($i === $resolution) {
+				# Round up to acquire a resolved final fractional element.
+				$resolved = round($pointer, 0, PHP_ROUND_HALF_UP);
+
+				# If the resolved index rounds up to the increment of the base.
+				if ($resolved >= $base) {
+					# Clamps the index back to a sane value.
+					# Prevents rounding, for example, a binary index of [1] up to [2]
+					# and attempting to display a binary numeral for [2], which does not exist.
+					$resolved = $resolved - 1;
+				}
+
+				# Push resolved final pointer into the result.
+				array_push($result, $resolved);
+				continue;
+			}
+
+			# Push the current pointer into the result floored.
+			array_push($result, floor($pointer));
+		}
+
+		# Return the result.
+		return $result;
+	}
+
+	/**
+	 * Convert a fraction in decimal to Base A.
+	 *
+	 * This is the final part of fraction conversions.
+	 *
+	 * BCMath version.
+	 *
+	 * @param string $fraction
+	 * @param int $resolution
+	 * @param string $base
+	 * @return array
+	 */
+	private function bcConvertFractionDecToBase(string $fraction, $resolution = 1, string $base): array
 	{
 		# Result as an empty array.
 		$result = [];
@@ -1255,6 +1510,7 @@ class Havoc_Base
 		# Return the number split by its delimiter.
 		return explode($delimiter, $string);
 	}
+
 	/**
 	 * Returns false if the number string given contains invalid numerals.
 	 *
@@ -1262,7 +1518,7 @@ class Havoc_Base
 	 * @param array $numerals
 	 * @return bool
 	 */
-	private function validateNumberString($number, $numerals): bool
+	private function validateNumberString(array $number, array $numerals): bool
 	{
 		# Get difference of number against its numerals and returns each unique element.
 		$result = array_udiff($number, $numerals, "strcasecmp");
@@ -1274,56 +1530,90 @@ class Havoc_Base
 
 		return true;
 	}
+
+	/**
+	 * Returns true if a number is negative, false if not.
+	 *
+	 * @param array $number
+	 * @param string $negative
+	 * @return bool
+	 */
+	private function isNegativeArray(array $number, string $negative)
+	{
+		if ($number[0] !== $negative) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Returns true if a number is negative, false if not.
+	 *
+	 * @param string $number
+	 * @param string $negative
+	 * @return bool
+	 */
+	private function isNegativeString(string $number, string $negative)
+	{
+		if (strpos($number, $negative) === false) {
+			return false;
+		}
+
+		return true;
+	}
 	// </editor-fold>
 
 	// <editor-fold desc="<BCMath Extensions>" defaultstate="collapsed">
 	/**
 	 * Round full up BC math numbers (ceiling).
 	 *
-	 * @param $number
+	 * @param string $number
+	 * @param int $resolution
 	 * @return string
 	 * @author Alix Axel <https://stackoverflow.com/users/89771/alix-axel>
 	 */
-	protected function bcceil($number)
+	protected function bcceil($number, int $resolution = 0): string
 	{
 		if ($number[0] != '-') {
-			return bcadd($number, 1, 0);
+			return bcadd($number, 1, $resolution);
 		}
 
-		return bcsub($number, 0, 0);
+		return bcsub($number, 0, $resolution);
 	}
 
 	/**
 	 * Round full down BC math numbers (floor).
 	 *
-	 * @param $number
+	 * @param string $number
+	 * @param int $resolution
 	 * @return string
 	 * @author Alix Axel <https://stackoverflow.com/users/89771/alix-axel>
 	 */
-	protected function bcfloor($number)
+	protected function bcfloor(string $number, int $resolution = 0): string
 	{
 		if ($number[0] != '-') {
-			return bcadd($number, 0, 0);
+			return bcadd($number, 0, $resolution);
 		}
 
-		return bcsub($number, 1, 0);
+		return bcsub($number, 1, $resolution);
 	}
 
 	/**
 	 * Round BC math numbers to a precision.
 	 *
 	 * @param $number
-	 * @param int $precision
+	 * @param int $resolution
 	 * @return string
 	 * @author Alix Axel <https://stackoverflow.com/users/89771/alix-axel>
 	 */
-	protected function bcround($number, $precision = 0)
+	protected function bcround(string $number, int $resolution = 0): string
 	{
 		if ($number[0] != '-') {
-			return bcadd($number, '0.' . str_repeat('0', $precision) . '5', $precision);
+			return bcadd($number, '0.' . str_repeat('0', $resolution) . '5', $resolution);
 		}
 
-		return bcsub($number, '0.' . str_repeat('0', $precision) . '5', $precision);
+		return bcsub($number, '0.' . str_repeat('0', $resolution) . '5', $resolution);
 	}
 
 	/**
@@ -1332,11 +1622,14 @@ class Havoc_Base
 	 * Requires BCMath scale 0.
 	 *
 	 * @param string $number
-	 * @return float|int
+	 * @param int $resolution
+	 * @return string
 	 */
-	protected function bctruncate(string $number)
+	protected function bctruncate(string $number, int $resolution = 0): string
 	{
-		return bcdiv($number, 1, 0);
+		$int = bcdiv($number, 1, 0);
+
+		return bcsub($number, $int, $resolution);
 	}
 	// </editor-fold>
 
@@ -1552,6 +1845,26 @@ class Havoc_Base
 	}
 
 	/**
+	 * Returns Base A's negative sign.
+	 *
+	 * @return string
+	 */
+	public function getBaseANegativeSign(): string
+	{
+		return $this->baseBNegativeSign;
+	}
+
+	/**
+	 * Sets Base A's negative sign.
+	 *
+	 * @param string $sign
+	 */
+	public function setBaseANegativeSign(string $sign)
+	{
+		$this->baseBNegativeSign = $sign;
+	}
+
+	/**
 	 * Returns Base A's orders separator.
 	 *
 	 * @return int
@@ -1609,6 +1922,26 @@ class Havoc_Base
 	public function setBaseBFractionalDelimiter(string $delimiter)
 	{
 		$this->baseBFractionalDelimiter = $delimiter;
+	}
+
+	/**
+	 * Returns Base B's negative sign.
+	 *
+	 * @return string
+	 */
+	public function getBaseBNegativeSign(): string
+	{
+		return $this->baseBNegativeSign;
+	}
+
+	/**
+	 * Sets Base B's negative sign.
+	 *
+	 * @param string $sign
+	 */
+	public function setBaseBNegativeSign(string $sign)
+	{
+		$this->baseBNegativeSign = $sign;
 	}
 
 	/**
