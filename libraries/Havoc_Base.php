@@ -71,14 +71,14 @@
  * - return_array: true returns an array. False returns a concatenated string of the numerals.
  *
  * - format_numeric: true returns a numerically formatted string, including 'thousands' separators.
- *
- * @todo Implement arbitrarily precise fractions (v2.6.0)
+ * 
+ * @todo Implement arbitrarily precise fractions (v2.6.1)
  * @todo Implement scientific notation (v2.6)
  * @todo Implement short notation (v2.6.5)
  *
  * @author Kessie Heldieheren <me@kessie.gold>
  * @package Havoc
- * @version 2.5.9
+ * @version 2.6.0
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -92,12 +92,8 @@ class Havoc_Base
     const EF_CANNOT_CONVERT_FROM_BASE = "Cannot convert anything from a base because %s.";
     const EF_CANNOT_SET_BASE_A_NUMERALS = "Cannot set %s's numerals list because %s.";
     const EF_CANNOT_SET_BASE_B_NUMERALS = "Cannot set %s's numerals list because %s.";
-    const EF_CANNOT_CONVERT_AB = "Cannot begin a conversion from %s to %s because %s.";
-    const EF_CANNOT_CONVERT_BA = "Cannot begin a conversion from %s to %s because %s.";
     const EF_CANNOT_CONVERT_XY = "Cannot begin a conversion from %s to %s because %s.";
     const EF_CANNOT_INTDIV = "Cannot perform division on the input because %s.";
-    const EF_CANNOT_FORMAT_A = "Cannot render %s number formatted because %s.";
-    const EF_CANNOT_FORMAT_B = "Cannot render %s number formatted because %s.";
     const EF_CANNOT_FORMAT_X = "Cannot render %s number formatted because %s.";
 
     /* Class messages (messages) */
@@ -106,7 +102,7 @@ class Havoc_Base
     const E_NUMERALS_LIST_NOT_UNIQUE = "the numerals list contains duplicate symbols";
     const E_NO_NUMBER = "no number was provided";
     const E_NUMERALS_INVALID = "the number provided is not using the correct numerals";
-    const E_INPUT_EXCEEDS_INT_LIMIT = "the number provided is too long";
+    const E_NUMBER_TOO_LONG = "the number provided is too long";
     // </editor-fold>
 
     // <editor-fold desc="<Properties>" defaultstate="collapsed">
@@ -116,6 +112,15 @@ class Havoc_Base
      * @var bool
      */
     private $useArbitraryPrecision = false;
+
+	/**
+	 * Sets the maximum length of a number input.
+	 *
+	 * Defaults to 4096, as after this length it may take over a second to generate a number.
+	 *
+	 * @var int
+	 */
+    private $maxNumberLength = 4096;
 
     /**
      * Base A's name.
@@ -321,10 +326,14 @@ class Havoc_Base
         if (!empty($params["use_arbitrary_precision"])) {
             $this->setUseArbitraryPrecision($params["use_arbitrary_precision"]);
         }
+
+	    if (!empty($params["max_number_length"])) {
+		    $this->setMaxNumberLength($params["max_number_length"]);
+	    }
     }
     // </editor-fold>
 
-    // <editor-fold desc="<Main Conversion Methods>" defaultstate="collapsed">
+    // <editor-fold desc="<Main Methods: Conversion>" defaultstate="collapsed">
     /**
      * Converts a number in base A into base B, using Base B's numerals instead of an integer.
      *
@@ -568,6 +577,11 @@ class Havoc_Base
             if (false === $this->validateNumberString($number_as_array, $valid_numerals)) {
                 throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
             }
+
+            # If number input exceeds maximum number length.
+	        if (count($number_as_array) > $this->getMaxNumberLength()) {
+		        throw new OutOfBoundsException(self::E_NUMBER_TOO_LONG);
+	        }
         } catch (RuntimeException $re) {
             throw new RuntimeException(
                 sprintf(
@@ -678,7 +692,7 @@ class Havoc_Base
     }
     // </editor-fold>
 
-    // <editor-fold desc="<Formatting Numbers>" defaultstate="collapsed">
+    // <editor-fold desc="<Main Methods: Formatting>" defaultstate="collapsed">
     /**
      * Returns a raw Base A number numerically formatted.
      *
@@ -796,6 +810,11 @@ class Havoc_Base
             if (false === $this->validateNumberString($number_as_array, $valid_numerals)) {
                 throw new OutOfBoundsException(self::E_NUMERALS_INVALID);
             }
+
+	        # If number input exceeds maximum number length.
+	        if (count($number_as_array) > $this->getMaxNumberLength()) {
+		        throw new OutOfBoundsException(self::E_NUMBER_TOO_LONG);
+	        }
         } catch (RuntimeException $re) {
             throw new RuntimeException(
                 sprintf(
@@ -1643,9 +1662,9 @@ class Havoc_Base
     /**
      * Returns the use arbitrary precision flag.
      *
-     * @return string
+     * @return bool
      */
-    public function getUseArbitraryPrecision(): string
+    public function getUseArbitraryPrecision(): bool
     {
         return $this->useArbitraryPrecision;
     }
@@ -1657,11 +1676,31 @@ class Havoc_Base
      *
      * Do not flag this as true if BCMath is not installed.
      *
-     * @param string $arbitraryPrecision
+     * @param bool $arbitraryPrecision
      */
-    public function setUseArbitraryPrecision ($arbitraryPrecision)
+    public function setUseArbitraryPrecision (bool $arbitraryPrecision)
     {
         $this->useArbitraryPrecision = $arbitraryPrecision;
+    }
+
+    /**
+     * Returns the max number length.
+     *
+     * @return int
+     */
+    public function getMaxNumberLength(): int
+    {
+        return $this->maxNumberLength;
+    }
+
+    /**
+     * Sets max number length.
+     *
+     * @param int $maxNumberLength
+     */
+    public function setMaxNumberLength (int $maxNumberLength)
+    {
+        $this->maxNumberLength = $maxNumberLength;
     }
 
     /**
