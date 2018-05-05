@@ -53,7 +53,7 @@
  * - base_b_fractionaldelimiter: Delimiter for fractions. Example: 0 + 33 -> 0.33
  * - use_arbitrary_precision: If true, module use BCMath for arbitrarily large numbers.
  *
- * Use Havoc_Base->flagUseArbitraryPrecision([bool]) to determine whether or not to use BCMath arbitrary precision.
+ * Use Havoc_Base->setUseArbitraryPrecision([bool]) to determine whether or not to use BCMath arbitrary precision.
  * Use Havoc_Base->convertAb() to convert base A into base B.
  * Use Havoc_Base->convertBa() to convert base B into base A.
  * Use Havoc_Base->formatBaseANumber() to format a given number in the provided numeric format. I.e. EXXX -> E XXX.
