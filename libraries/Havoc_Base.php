@@ -71,7 +71,7 @@
  * - return_array: true returns an array. False returns a concatenated string of the numerals.
  *
  * - format_numeric: true returns a numerically formatted string, including 'thousands' separators.
- * 
+ *
  * @todo Implement arbitrarily precise fractions (v2.6.1)
  * @todo Implement scientific notation (v2.6)
  * @todo Implement short notation (v2.6.5)
@@ -523,23 +523,23 @@ class Havoc_Base
      * @throws RuntimeException
      */
     private function convertXy(
-        string $number,
-        bool $is_base_a,
-        string $host_name,
-        string $target_name,
-        string $host_delimiter,
-        string $target_delimiter,
-        string $host_negative,
-        string $target_negative,
-        string $host_orders_seperator,
-        int $host_base,
-        int $target_base,
-        array $host_numerals,
-        array $target_numerals,
-        bool $convert_to_base_numerals,
-        bool $return_array,
-        bool $format_numeric,
-        bool $strip_zeros
+	    string $number,
+	    bool $is_base_a,
+	    string $host_name,
+	    string $target_name,
+	    string $host_delimiter,
+	    string $target_delimiter,
+	    string $host_negative,
+	    string $target_negative,
+	    string $host_orders_seperator,
+	    int $host_base,
+	    int $target_base,
+	    array $host_numerals,
+	    array $target_numerals,
+	    bool $convert_to_base_numerals,
+	    bool $return_array,
+	    bool $format_numeric,
+	    bool $strip_zeros
     ) {
         # Radix, delimiter, separator, and negative sign to provide a list of valid input.
         $valid_numerals = array_merge(
@@ -557,11 +557,6 @@ class Havoc_Base
 
             # Declare the number as negative.
             $is_negative = true;
-        }
-
-        # Strip zeroes from input.
-        if ($strip_zeros) {
-            $number = ltrim($number, $host_numerals[0]);
         }
 
         # The entire number split into an array.
@@ -632,6 +627,15 @@ class Havoc_Base
 
         # The basic number, stripped of the orders separators.
         $number = str_replace($host_orders_seperator, "", $components[0]);
+
+	    # Strip zeroes from input, if length of number is greater than 1.
+	    # Otherwise it'll strip the literal number zero.
+	    if (
+		    true === $strip_zeros &&
+		    strlen($number) > 1
+	    ) {
+		    $number = ltrim($number, $host_numerals[0]);
+	    }
 
         # Number element (integer) element split into an array.
         $number = str_split($number, 1);
@@ -792,11 +796,6 @@ class Havoc_Base
 	        $is_negative = true;
         }
 
-        # Strip zeroes from input.
-        if ($strip_zeros) {
-            $number = ltrim($number, $host_numerals[0]);
-        }
-
         # The entire number split into an array.
         $number_as_array = str_split($number);
 
@@ -839,6 +838,15 @@ class Havoc_Base
 
         # The basic number, stripped of the orders separators.
         $number = str_replace($host_orders_seperator, "", $components[0]);
+
+	    # Strip zeroes from input, if length of number is greater than 1.
+	    # Otherwise it'll strip the literal number zero.
+	    if (
+		    true === $strip_zeros &&
+		    strlen($number) > 1
+	    ) {
+		    $number = ltrim($number, $host_numerals[0]);
+	    }
 
         # Number element (integer) element split into an array.
         $number = str_split($number, 1);
