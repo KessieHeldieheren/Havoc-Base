@@ -543,7 +543,10 @@ class Havoc_Base
 
         # Remove negative sign if the number is negative.
         if ($this->isNegativeString($number, $host_negative)) {
+        	# Trim negative sign from number.
             $number = ltrim($number, $host_negative);
+
+            # Declare the number as negative.
             $is_negative = true;
         }
 
@@ -768,8 +771,11 @@ class Havoc_Base
 
         # Remove negative sign if the number is negative.
         if ($this->isNegativeString($number, $host_negative)) {
-            $number = ltrim($number, $host_negative);
-            $is_negative = true;
+	        # Trim negative sign from number.
+	        $number = ltrim($number, $host_negative);
+
+	        # Declare the number as negative.
+	        $is_negative = true;
         }
 
         # Strip zeroes from input.
@@ -1851,7 +1857,7 @@ class Havoc_Base
      */
     public function getBaseANegativeSign(): string
     {
-        return $this->baseBNegativeSign;
+        return $this->baseANegativeSign;
     }
 
     /**
@@ -1861,7 +1867,7 @@ class Havoc_Base
      */
     public function setBaseANegativeSign(string $sign)
     {
-        $this->baseBNegativeSign = $sign;
+        $this->baseANegativeSign = $sign;
     }
 
     /**
